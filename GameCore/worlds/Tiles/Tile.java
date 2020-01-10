@@ -1,0 +1,57 @@
+//This is the class which is the base of all tiles which are loaded to the screen. It uses 2 arrays of tile IDs to load the necessary tile classes which make up the tiles of the map in game.
+
+package GameCore.worlds.Tiles;
+
+import java.awt.image.*;
+import java.awt.*;
+
+public class Tile {
+  
+  //static variables
+  public static Tile[] tiles = new Tile [256];
+  public static Tile PlainTile = new PlainTile(0); //Tile IDs
+  public static Tile PlainTile2 = new Plaintile2(1);
+  public static Tile BridgeTile1 = new Bridge1(8);
+  public static Tile BridgeTile2 = new Bridge2(9);
+  public static Tile BridgeTile3 = new Bridge3(10);
+  public static Tile BridgeTile4 = new Bridge4(11);
+  public static Tile WaterTile = new Water(12);
+  public static Tile CliffTile2 = new CliffTile2(13);
+  public static Tile CliffTile = new CliffTile (14);
+  public static Tile Grass = new Grass(15);
+  public static Tile Path = new Path (16); 
+ 
+ public static final int TILEWIDTH = 64, TILEHEIGHT = 64;//dimensions of the tile
+ 
+ protected BufferedImage texture;
+ protected final int id;
+ 
+ public Tile(BufferedImage texture, int id){
+  this.texture = texture;
+  this.id = id;
+  
+  tiles[id] = this;//array of tiles
+ }
+ 
+ public void tick(){
+   
+ }
+ 
+ //method which draws tiles 
+ public void render(Graphics g, int x, int y){
+  g.drawImage(texture, x, y, TILEWIDTH, TILEHEIGHT, null);
+ }
+ 
+ public boolean isSolid(){
+  return false;//A method that indicates a tile that cannot be walked on
+ }
+ 
+ public boolean willFall(){
+  return false; //a method that indicates whether a player will fall off the map
+ }
+ 
+ public int getId(){
+  return id;//a method which indicates the type of tile
+ }
+ 
+}

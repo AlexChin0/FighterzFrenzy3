@@ -1,0 +1,412 @@
+//This is another child class of the entity class. It is for entities which can move or attack such as the monsters.
+package GameCore.entities;
+
+import GameCore.*;
+import GameCore.worlds.Tiles.Tile;
+import GameCore.heroes.*;
+import java.util.*;
+
+import java.awt.*;
+
+public abstract class LiveEntity extends Entity {
+ 
+ protected boolean flying, falling, attacking;
+ protected float xMove, yMove;
+ protected int moveCounter = 0, dirWheel = 1;
+ protected Entity p1;
+ 
+ protected long abTimer, lastUse;//timer variables for the cooldowns 
+ArrayList<Long> effectTimer = new ArrayList<Long>();
+  
+//constructor
+  public LiveEntity(Handler handler, float x, float y, int width, int height, float hpBonus) { 
+    super(handler, x , y, width, height);
+    
+    this.handler = handler;
+    this.x = x;
+    this.y = y;//instance variables
+    this.width = width; 
+    this.height = height;
+    health = defaultHP * hpBonus;
+    maxSpeed = speed;
+    
+    p1 = handler.getWorld().getEntityManager().getPlayer();//saves the player as a variable
+    
+    bounds = new Rectangle (0, 0, width, height);
+  }
+  
+  public abstract void attack();
+  
+  //inherited methods
+  public void tick(){
+    
+  }
+  
+  public void render(Graphics g){
+    
+  }
+  
+  @Override
+  public void slowed(float percent){
+    affectedBy = 2;
+    if(speed == maxSpeed){
+      speed = speed * percent;
+      slowed = true;
+    }
+  }
+  
+  @Override
+  public void stunned(){
+    affectedBy = 1;
+    speed = 0;
+    stun = true;
+  }
+
+  
+  public void silenced(){
+   
+  }
+  
+  //tracks the entities states and debuffs
+  public void effectCheck(long time, int type){   // effect index: 1 = stun, 2 = slowed, 3 = silenced
+    
+    abTimer += System.currentTimeMillis() - lastUse;
+    lastUse = System.currentTimeMillis(); 
+    
+    if(type == 1){
+      if(stun){
+        long toSeconds = (int)(abTimer / 1000);
+        
+        if (!effectTimer.contains(toSeconds)){
+          effectTimer.add(toSeconds); //ticks effects on player
+          if (effectCount < timeStack){
+            effectCount++;
+          }
+        }   
+        if (effectCount == timeStack){
+          freedom();
+        }
+      }
+    }else if(type == 2){
+      if(slowed){
+        long toSeconds = (int)(abTimer / 1000);
+        if (!effectTimer.contains(toSeconds)){
+          effectTimer.add(toSeconds);
+          if (effectCount < timeStack){
+            effectCount++;
+          }
+        }   
+        
+        if (effectCount == timeStack){
+          freedom();
+        }
+      }
+    }else if(type == 3){
+      if(silenced){
+        long toSeconds = (int)(abTimer / 1000);
+        if (!effectTimer.contains(toSeconds)){
+          effectTimer.add(toSeconds);
+          if (effectCount < timeStack){
+            effectCount++;
+          }
+        }   
+        
+        if (effectCount == timeStack){
+          freedom();
+        }
+      }
+    }else{
+      timeStack = 0;
+      affectedBy = 0;
+    }
+  }
+  
+  //returns the entity to default state
+  @Override
+  public void freedom(){
+    timeStack = 0;
+    affectedBy = 0;
+    effectCount = 0;
+    speed = maxSpeed;
+    stun = false;
+    slowed = false;
+    silenced = false;
+    free = true;
+  }
+  
+  //this method calls the entities different movement behaviours
+  protected void moveBehaviour(int type){ //1 == attack 2 == rush
+    
+        int tx = (int)(x + xMove + bounds.x) / Tile.TILEWIDTH;
+    
+    if(collisionWithTile(tx, (int) (y + bounds.y) / Tile.TILEHEIGHT) && y < 412){
+      yMove += speed;
+    }else if(collisionWithTile(tx, (int) (y + bounds.y + bounds.height) / Tile.TILEHEIGHT) && y >= 412){
+      yMove -= speed;
+    }else{
+      yMove = 0; 
+    }   
+    
+    p1 = handler.getWorld().getEntityManager().getPlayer();         
+    
+    if(type == 1){
+      attackMove();
+    }else if(type == 2){
+      rush();
+    }
+    
+  }
+  
+  //this method makes the monster follow and attack the player
+  protected void attackMove(){
+    float dx = 0, dy = 0;
+
+    dx = x - (int)(p1.getX() + p1.getWidth()/2);//tracks the difference in x coordinates
+    dy = y - (int)(p1.getY() + p1.getHeight()/6);//tracks the difference in y coordinates
+    
+    //determines the direction of the monster based on the player position
+      if(dx > speed){
+        xMove = -speed;
+        dir = 1;
+      }else if(dx + width < speed){
+        xMove = speed;
+        dir = 2; 
+      }
+        
+      if(dy > speed * 3){
+        yMove = -speed;
+      }else if(dy < speed * 3){
+        yMove = speed;
+      }else{
+        yMove = 0; 
+      }
+      
+    }
+  
+  //this method makes the monster move across the screen
+  protected void rush(){
+    xMove = -speed;
+  }
+  
+  //method which checks with collisions with player projectiles
+  public void projCheck(ArrayList<Projectile> projectiles, int dmg, int eIndex, long time){
+    
+    for(int i = 0; i < projectiles.size(); i++){
+      Rectangle pb = new Rectangle ();
+      projectiles.get(i).tick();
+      
+      pb.x = projectiles.get(i).projX + projectiles.get(i).inX;
+      pb.y = projectiles.get(i).projY + projectiles.get(i).inY;
+      pb.width = projectiles.get(i).projWidth;
+      pb.height = projectiles.get(i).projHeight;
+      
+      for (Entity e : handler.getWorld().getEntityManager().getEntities()){
+        if (e.equals(this))
+          continue;
+        if(e.getHitbox(0, 0).intersects(pb) && e instanceof Player){
+          e.hurt(dmg); 
+          if(eIndex == 1){
+            e.timeStack += time;
+            e.affectedBy = 1;
+            e.hurt(dmg);
+            dmg = 0;
+            e.stunned();
+          }else if(eIndex == 2){
+            e.timeStack += time;
+            e.affectedBy = 2;
+            e.slowed(0.5f);          
+          }else if(projectiles.get(i).projBounds()){
+            projectiles.remove(projectiles.get(projectiles.size() - 1));           
+          }else{
+            
+          }
+          projectiles.remove(projectiles.get(projectiles.size() - 1));
+          return;
+        }
+      }   
+    }
+    
+  }
+
+  //triggers collisions with solid tiles
+  protected boolean collisionWithTile(int x, int y){
+   return handler.getWorld().getTile(x, y).isSolid(); 
+  }
+
+  protected boolean collisionWithFall(int x, int y){
+   return handler.getWorld().getTile(x, y).willFall(); 
+  }
+
+  private void fallInit(){
+   width -= 10;
+   height -= 10; //falling animation
+   x+=10;
+   y+=10;
+   if(width <= 96 && height <= 96){
+    hurt(maxHealth * 0.15f);
+    if(playerNum == 1){
+     x = 100;
+     y = 280;
+    }
+    height = 192;
+    width = 192;
+    falling = false;
+    return;
+   }
+  }
+
+  //tracks tiles that makes the entity fall
+public void effectTiles(){ 
+    if(collisionWithFall((int) (x + bounds.x + bounds.width * 1.5) / Tile.TILEWIDTH, (int) (y + bounds.y + bounds.height * 1.5) / Tile.TILEHEIGHT) && 
+       collisionWithFall((int) (x + bounds.x) / Tile.TILEWIDTH, (int) (y + bounds.y * 1.5) / Tile.TILEHEIGHT)){//tile collision
+      falling = true;
+    }
+    if(falling){
+      fallInit();
+    }
+}
+  
+//makes the entitiy move on the screen
+public void move(){
+  if(!checkEntityCollisions(xMove, 0)){
+  attacking = false;
+  moveX();
+  }else if(checkEntityCollisions(xMove, 0)){
+    attacking = true;
+    attack();
+  }
+  if(!checkEntityCollisions(0, yMove)){
+  moveY();
+  }
+  if(!flying){
+  effectTiles();
+  }
+}
+
+//method which makes sure the monsters stays within the bounds of the screen
+public void inBounds(){
+   if ((int)(x + xMove + bounds.x) < Tile.TILEWIDTH * 0.6){ // left
+    x += Tile.TILEWIDTH; 
+   }else if ((int) (x + xMove + bounds.x + bounds.width) > (Launcher.runWidth - Tile.TILEWIDTH * 0.6)){ // right
+    x -= Tile.TILEWIDTH; 
+   }else if ((int)(y + yMove + bounds.y) > Launcher.runHeight - Tile.TILEHEIGHT){ // up
+    y -= Tile.TILEHEIGHT;
+   }else if ((int) (y + yMove + bounds.y + bounds.height) < Tile.TILEHEIGHT){ // down
+    y += Tile.TILEHEIGHT;
+   }
+   
+   if(!flying){
+   if (collisionWithTile((int) (x + bounds.x + bounds.width/2)/ Tile.TILEWIDTH,(int) (y + bounds.y) / Tile.TILEHEIGHT) &&
+   collisionWithTile((int) (x + bounds.x + bounds.width/2)/ Tile.TILEWIDTH, (int) (y + bounds.y + bounds.height) / Tile.TILEHEIGHT)){
+     x -= Tile.TILEWIDTH; // right collision
+   }
+   
+   if (collisionWithTile((int)(x + bounds.x + bounds.width/2)/ Tile.TILEWIDTH,(int) (y + bounds.y) / Tile.TILEHEIGHT) &&
+       collisionWithTile((int)(x + bounds.x + bounds.width/2)/ Tile.TILEWIDTH, (int) (y + bounds.y + bounds.height) / Tile.TILEHEIGHT)){
+     x += Tile.TILEWIDTH; // left collision
+   }
+   
+   if(collisionWithTile((int) (x + bounds.x) / Tile.TILEWIDTH, (int)(y + bounds.y) / Tile.TILEHEIGHT) &&
+      collisionWithTile((int) (x + bounds.x + bounds.width) / Tile.TILEWIDTH, (int)(y + bounds.y) / Tile.TILEHEIGHT)){
+     y -= Tile.TILEHEIGHT;//up collision
+   }  
+   
+   if(collisionWithTile((int) (x + bounds.x) / Tile.TILEWIDTH, (int)(y + bounds.y + bounds.height/2) / Tile.TILEHEIGHT) &&
+      collisionWithTile((int) (x + bounds.x + bounds.width) / Tile.TILEWIDTH, (int)(y + bounds.y + bounds.height/2) / Tile.TILEHEIGHT)){
+     y += Tile.TILEHEIGHT; //down collision
+   }
+ }
+ }
+
+//moves the entity in the horizontal direction
+public void moveX(){
+ if(!flying){
+  if(xMove > 0){//Checks collisions moving right
+    int tx = (int) (x + xMove + bounds.x + bounds.width) / Tile.TILEWIDTH;
+    
+    if(!collisionWithTile(tx, (int) (y + bounds.y) / Tile.TILEHEIGHT) &&
+       !collisionWithTile(tx, (int) (y + bounds.y + bounds.height) / Tile.TILEHEIGHT)){
+      x += xMove;
+    }
+  }else if(xMove < 0){// Checks collisions moving left
+    int tx = (int)(x + xMove + bounds.x) / Tile.TILEWIDTH;
+    
+    if(!collisionWithTile(tx, (int) (y + bounds.y) / Tile.TILEHEIGHT) &&
+       !collisionWithTile(tx, (int) (y + bounds.y + bounds.height) / Tile.TILEHEIGHT)){
+      x += xMove;
+    }
+  }
+ }else if(flying){
+  if(xMove != 0){
+  x += xMove;
+  }
+ }
+}
+
+//moves the entity in the vertical direction
+public void moveY(){
+ if(!flying){
+  if(yMove < 0){//Checks collisions moving up
+    int ty = (int)(y + yMove + bounds.y) / Tile.TILEHEIGHT;
+    
+    if(!collisionWithTile((int) (x + bounds.x) / Tile.TILEWIDTH, ty) &&
+       !collisionWithTile((int) (x + bounds.x + bounds.width) / Tile.TILEWIDTH, ty)){
+      y += yMove;
+    }
+  }else if(yMove > 0){//Checks collisions moving down
+    int ty = (int) (y + yMove + bounds.y + bounds.height) / Tile.TILEHEIGHT;
+    
+    if(!collisionWithTile((int) (x + bounds.x) / Tile.TILEWIDTH, ty) &&
+       !collisionWithTile((int) (x + bounds.x + bounds.width) / Tile.TILEWIDTH, ty)){
+      y += yMove;
+    }
+  }
+  }else if(flying){
+  if(yMove != 0){
+  y += yMove;
+  }
+ }
+}
+
+//hit detection for the player
+public boolean hitCheck(int arWidth, int arHeight, int dmg){
+    Rectangle hb = getHitbox(0, 0);
+    Rectangle ar = new Rectangle ();
+    ar.width = arWidth;
+    ar.height = arHeight;
+    
+    if (dir == 1){
+      ar.x = hb.x - arWidth; // left
+      ar.y = hb.y + hb.height / 2 - arHeight / 2;
+    }else if (dir == 2){
+      ar.x = hb.x + hb.width; // right
+      ar.y = hb.y + hb.height / 2 - arHeight / 2;
+    }
+    
+    for (Entity e : handler.getWorld().getEntityManager().getEntities()){
+      if (e.equals(this))
+        continue;
+      if(e.getHitbox(0, 0).intersects(ar) && e instanceof Player){
+        e.hurt(dmg); 
+        attacking = false;
+        return true;
+      }
+    }
+    return false;
+  }
+  
+//inherited methods
+  public void hurt(float amt){
+    health -= amt;
+    if(health <= 0){
+      die();
+    }
+  }
+  
+  public void heal(float amt){
+    health+= amt;
+    if(health >= maxHealth){
+      health = maxHealth;
+    }
+  }
+}
